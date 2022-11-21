@@ -142,6 +142,8 @@ class TD(XtQuantTraderCallback):
             sell_able=position.can_use_volume,
             pnl=position.market_value - position.volume * position.open_price
         )
+        contract = self.gateway.get_contract(position_.vt_symbol)
+        position_.product = contract.product
         self.gateway.on_position(position_)
 
     def on_stock_trade(self, trade: XtTrade):
@@ -150,7 +152,7 @@ class TD(XtQuantTraderCallback):
             gateway_name=self.gateway.gateway_name,
             symbol=symbol,
             exchange=exchange,
-            orderid=trade.traded_id,
+            orderid=trade.order_id,
             tradeid=trade.traded_id,
             price=trade.traded_price,
             datetime=timestamp_to_datetime(trade.traded_time),

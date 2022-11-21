@@ -26,7 +26,9 @@ TO_VN_Exchange_map = {v: k for k, v in From_VN_Exchange_map.items()}
 
 From_VN_Trade_Type = {
     Direction.LONG: xtconstant.STOCK_BUY,
-    Direction.SHORT: xtconstant.STOCK_SELL
+    Direction.SHORT: xtconstant.STOCK_SELL,
+    Direction.PURCHASE: 134,
+    Direction.REDEMPTION: 135
 }
 
 

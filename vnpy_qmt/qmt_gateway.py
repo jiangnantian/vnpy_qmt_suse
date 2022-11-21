@@ -19,7 +19,7 @@ from vnpy.trader.object import (
     OrderRequest,
     CancelRequest,
     SubscribeRequest,
-
+    ContractData
 )
 
 from vnpy_qmt.md import MD
@@ -38,6 +38,7 @@ class QmtGateway(BaseGateway):
 
     def __init__(self, event_engine: EventEngine, gateway_name: str = 'QMT'):
         super(QmtGateway, self).__init__(event_engine, gateway_name)
+        self.contracts: Dict[str, ContractData] = {}
         self.md = MD(self)
         self.td = TD(self)
         self.count = -1
@@ -71,6 +72,17 @@ class QmtGateway(BaseGateway):
 
     def query_trade(self):
         self.td.query_trade()
+
+    def on_contract(self, contract):
+        self.contracts[contract.vt_symbol] = contract
+        super(QmtGateway, self).on_contract(contract)
+
+    def on_basket_component(self, comp):
+        evt = Event(EVENT_BASKET_COMPONENT, comp)
+        self.event_engine.put(evt)
+
+    def get_contract(self, vt_symbol):
+        return self.contracts.get(vt_symbol)
 
     def process_timer_event(self, event) -> None:
         if not self.td.inited:

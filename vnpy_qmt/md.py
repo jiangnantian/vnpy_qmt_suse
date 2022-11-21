@@ -5,21 +5,24 @@
 @Author    :fsksf
 """
 import datetime
-
+import asyncio
+import time
+from threading import Thread
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.constant import (
     Exchange, Product
 )
 from vnpy.trader.object import (
     CancelRequest, OrderRequest, SubscribeRequest, TickData,
-    ContractData
+    ContractData, BasketComponent
 )
 import xtquant.xtdata
 import xtquant.xttrader
 import xtquant.xttype
 from vnpy_qmt.utils import (
     From_VN_Exchange_map, TO_VN_Exchange_map, to_vn_contract,
-    TO_VN_Product, to_vn_product, timestamp_to_datetime
+    TO_VN_Product, to_vn_product, timestamp_to_datetime,
+    to_qmt_code
 )
 
 
@@ -28,10 +31,14 @@ class MD:
     def __init__(self, gateway):
         self.gateway = gateway
 
+        self.limit_ups = {}
+        self.limit_downs = {}
+
     def close(self) -> None:
         pass
 
     def subscribe(self, req: SubscribeRequest) -> None:
+
         return xtquant.xtdata.subscribe_quote(
             stock_code=f'{req.symbol}.{From_VN_Exchange_map[req.exchange]}',
             period='tick',
@@ -39,14 +46,19 @@ class MD:
         )
 
     def connect(self, setting: dict) -> None:
-
-        self.get_contract()
+        th = Thread(target=self.get_contract)
+        th.start()
+        return
 
     def get_contract(self):
         self.write_log('开始获取标的信息')
+        contract_ids = set()
         for sector in xtquant.xtdata.get_sector_list():
             stock_list = xtquant.xtdata.get_stock_list_in_sector(sector_name=sector)
             for symbol in stock_list:
+                if symbol in contract_ids:
+                    continue
+                contract_ids.add(symbol)
                 info = xtquant.xtdata.get_instrument_detail(symbol)
                 contract_type = xtquant.xtdata.get_instrument_type(symbol)
                 if info is None or contract_type is None:
@@ -55,11 +67,13 @@ class MD:
                     exchange = TO_VN_Exchange_map[info['ExchangeID']]
                 except KeyError:
                     print('本gateway不支持的标的', symbol)
+                    continue
                 if exchange not in self.gateway.exchanges:
                     continue
                 product = to_vn_product(contract_type)
                 if product not in self.gateway.TRADE_TYPE:
                     continue
+
                 c = ContractData(
                     gateway_name=self.gateway.gateway_name,
                     symbol=info['InstrumentID'],
@@ -70,8 +84,31 @@ class MD:
                     size=100,
                     min_volume=100
                 )
+                self.limit_ups[c.vt_symbol] = info['UpStopPrice']
+                self.limit_downs[c.vt_symbol] = info['DownStopPrice']
                 self.gateway.on_contract(c)
+                if product == Product.ETF:
+                    self.get_etf_info(c)
         self.write_log('获取标的信息完成')
+
+    def get_etf_info(self, contract):
+        self.write_log(f'获取etf {contract.vt_symbol} 篮子信息')
+        qmt_symbol = to_qmt_code(contract.symbol, contract.exchange)
+        info = xtquant.xtdata.get_etf_info(qmt_symbol)
+        stocks = info['stocks']
+        for stock_code, stock_comp in stocks.items():
+            bc = BasketComponent(
+                gateway_name=self.gateway.gateway_name,
+                basket_name=contract.vt_symbol,
+                exchange=TO_VN_Exchange_map(stock_comp['componentExchID']),
+                name=stock_comp['componentName'],
+                share=stock_comp['componentVolume'],
+                cash_substitute=0,
+                premium_ratio=0,
+                redemption_cash_substitute=0,
+                symbol=stock_comp['componentCode']
+            )
+            self.gateway.on_basket_component(bc)
 
     def on_tick(self, datas):
         for code, data_list in datas.items():
@@ -82,6 +119,7 @@ class MD:
                 ask_vol = data['askVol']
                 bid_price = data['bidPrice']
                 bid_vol = data['bidVol']
+
                 tick = TickData(
                     gateway_name=self.gateway.gateway_name,
                     symbol=symbol,
@@ -119,6 +157,11 @@ class MD:
                     bid_volume_4=bid_vol[3],
                     bid_volume_5=bid_vol[4],
                 )
+                contract = self.gateway.get_contract(tick.vt_symbol)
+                if contract:
+                    tick.name = contract.name
+                tick.limit_up = self.limit_ups.get(tick.vt_symbol, None)
+                tick.limit_down = self.limit_downs.get(tick.vt_symbol, None)
                 self.gateway.on_tick(tick)
     def write_log(self, msg):
         self.gateway.write_log(f"[ md ] {msg}")
