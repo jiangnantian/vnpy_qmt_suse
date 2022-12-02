@@ -77,7 +77,8 @@ TO_VN_Product = {
 
 
 def to_vn_product(dic: dict):
-
+    if dic['etf']:
+        return Product.ETF
     for k, v in dic.items():
         if v:
             break

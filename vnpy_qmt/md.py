@@ -30,7 +30,7 @@ class MD:
 
     def __init__(self, gateway):
         self.gateway = gateway
-
+        self.th = None
         self.limit_ups = {}
         self.limit_downs = {}
 
@@ -46,14 +46,20 @@ class MD:
         )
 
     def connect(self, setting: dict) -> None:
-        th = Thread(target=self.get_contract)
-        th.start()
+        self.th = Thread(target=self.get_contract)
+        self.th.start()
         return
 
     def get_contract(self):
         self.write_log('开始获取标的信息')
         contract_ids = set()
-        for sector in xtquant.xtdata.get_sector_list():
+        bk = ['上期所', '上证A股', '上证B股', '上证期权', '中金所', '创业板', '大商所',
+              '板块交易指数', '板块加权交易指数', '板块加权指数', '板块指数', '沪市ETF', '沪市债券',
+              '沪市基金', '沪市指数', '沪深A股', '沪深B股', '沪深ETF', '沪深基金', '沪深指数', '深市ETF',
+              '深市基金', '深市指数', '深证A股', '深证B股', '深证期权', '科创板', '科创板CDR',
+              '连续合约']
+        for sector in bk:
+            print(sector)
             stock_list = xtquant.xtdata.get_stock_list_in_sector(sector_name=sector)
             for symbol in stock_list:
                 if symbol in contract_ids:
@@ -96,11 +102,18 @@ class MD:
         qmt_symbol = to_qmt_code(contract.symbol, contract.exchange)
         info = xtquant.xtdata.get_etf_info(qmt_symbol)
         stocks = info['stocks']
+
         for stock_code, stock_comp in stocks.items():
+            xt_ex = stock_comp['componentExchID']
+            if xt_ex is None:
+                vn_exchange = None
+                continue
+            else:
+                vn_exchange = TO_VN_Exchange_map[xt_ex]
             bc = BasketComponent(
                 gateway_name=self.gateway.gateway_name,
                 basket_name=contract.vt_symbol,
-                exchange=TO_VN_Exchange_map(stock_comp['componentExchID']),
+                exchange=vn_exchange,
                 name=stock_comp['componentName'],
                 share=stock_comp['componentVolume'],
                 cash_substitute=0,

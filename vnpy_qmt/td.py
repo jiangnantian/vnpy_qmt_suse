@@ -30,6 +30,8 @@ class TD(XtQuantTraderCallback):
         self.inited = False
         self.orders: Dict[str, OrderData] = {}
         self.traders: Dict[str, TradeData] = {}
+        self.orderid_vnoid_map = {}
+        self.vnoid_orderid_map = {}
 
     def connect(self, settings: dict):
         account = settings['交易账号']
@@ -53,6 +55,14 @@ class TD(XtQuantTraderCallback):
         else:
             self.write_log(f'订阅账户【失败】： {sub_msg}')
 
+    def get_order_remark(self):
+        mark = f'{self.gateway.gateway_name}.{self.count}'
+        self.count += 1
+        return mark
+
+    def get_vn_orderid(self, seq):
+        return f'{self.gateway.gateway_name}.{str(seq)}'
+
     def send_order(self, req: OrderRequest):
         seq = self.trader.order_stock_async(
             account=self.account,
@@ -60,12 +70,14 @@ class TD(XtQuantTraderCallback):
             order_type=From_VN_Trade_Type[req.direction],
             price_type=from_vn_price_type(req),
             order_volume=int(req.volume),
-            price=req.price
+            price=req.price,
+            order_remark='',
         )
-        return seq
+        return self.get_vn_orderid(seq)
 
     def cancel_order(self, order_id):
-        return self.trader.cancel_order_stock_async(account=self.account, order_id=order_id)
+        qmt_order_id = self.vnoid_orderid_map.get(order_id)
+        return self.trader.cancel_order_stock_async(account=self.account, order_id=qmt_order_id)
 
     def query_account(self):
         return self.trader.query_stock_asset_async(self.account, callback=self.on_stock_asset)
@@ -106,9 +118,9 @@ class TD(XtQuantTraderCallback):
 
     def on_stock_order(self, order: XtOrder):
         symbol, exchange = to_vn_contract(order.stock_code)
-
+        vnpy_oid = self.orderid_vnoid_map.get(order.order_id)
         order_ = OrderData(
-            orderid=order.order_id,
+            orderid=vnpy_oid,
             symbol=symbol,
             exchange=exchange,
             price=order.price,
@@ -148,11 +160,12 @@ class TD(XtQuantTraderCallback):
 
     def on_stock_trade(self, trade: XtTrade):
         symbol, exchange = to_vn_contract(trade.stock_code)
+        vnoid = self.orderid_vnoid_map.get(trade.order_id)
         trade_ = TradeData(
             gateway_name=self.gateway.gateway_name,
             symbol=symbol,
             exchange=exchange,
-            orderid=trade.order_id,
+            orderid=vnoid,
             tradeid=trade.traded_id,
             price=trade.traded_price,
             datetime=timestamp_to_datetime(trade.traded_time),
@@ -164,15 +177,22 @@ class TD(XtQuantTraderCallback):
     def on_cancel_error(self, cancel_error):
         self.write_log(cancel_error)
 
-    def on_order_error(self, order_error):
-        self.write_log(order_error)
+    def on_order_error(self, order_error: XtOrderError):
+        self.write_log(f'订单错误：{order_error.error_msg}')
+        vnpy_oid = self.orderid_vnoid_map.get(order.order_id)
+        old_order = self.orders.get(vnpy_oid, None)
+        if old_order:
+            old_order.status = Status.REJECTED
+            self.gateway.on_order(old_order)
 
     def on_order_stock_async_response(self, response: XtOrderResponse):
-        print(response)
+        self.write_log(f'下单成功 {response.order_id} {response.order_remark} {response.strategy_name}')
+        vn_oid = self.get_vn_orderid(response.seq)
+        self.orderid_vnoid_map[response.order_id] = str(response.seq)
+        self.vnoid_orderid_map[str(response.seq)] = response.order_id
 
     def on_cancel_order_stock_async_response(self, response: XtCancelOrderResponse):
-        old_order = self.orders.get(response.order_id, None)
-        print('撤单结果', response.cancel_result)
+        self.write_log(f'撤单结果： {response.cancel_result}')
 
     def write_log(self, msg):
         self.gateway.write_log(f'[ td ] {msg}')
