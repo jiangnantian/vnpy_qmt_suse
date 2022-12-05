@@ -4,6 +4,7 @@
 @Time      :2022/11/8 17:14
 @Author    :fsksf
 """
+import random
 from typing import Dict
 import xtquant.xttrader
 from xtquant.xttrader import XtQuantTraderCallback, XtQuantTrader
@@ -36,7 +37,7 @@ class TD(XtQuantTraderCallback):
     def connect(self, settings: dict):
         account = settings['交易账号']
         path = settings['mini路径']
-        session_id = 433216
+        session_id = random.randrange(1, 100000, 1)
         acc = StockAccount(account)
         self.account = acc
         self.trader = XtQuantTrader(path=path, session=session_id)
@@ -73,7 +74,25 @@ class TD(XtQuantTraderCallback):
             price=req.price,
             order_remark='',
         )
+        order = OrderData(gateway_name=self.gateway.gateway_name,
+                          symbol=req.symbol,
+                          exchange=req.exchange,
+                          orderid=str(seq),
+                          type=req.type,
+                          direction=req.direction,
+                          offset=req.offset,
+                          volume=req.volume,
+                          price=req.price,
+                          status=Status.SUBMITTING)
+        self.orders[order.orderid] = order
         return self.get_vn_orderid(seq)
+
+    def PURCHASE_REDEMPTION(self, req: OrderRequest):
+        """
+        申赎
+        """
+        pass
+
 
     def cancel_order(self, order_id):
         qmt_order_id = self.vnoid_orderid_map.get(order_id)
@@ -174,12 +193,12 @@ class TD(XtQuantTraderCallback):
         )
         self.gateway.on_trade(trade_)
 
-    def on_cancel_error(self, cancel_error):
-        self.write_log(cancel_error)
+    def on_cancel_error(self, cancel_error: XtCancelError):
+        self.write_log(cancel_error.error_msg)
 
     def on_order_error(self, order_error: XtOrderError):
         self.write_log(f'订单错误：{order_error.error_msg}')
-        vnpy_oid = self.orderid_vnoid_map.get(order.order_id)
+        vnpy_oid = self.orderid_vnoid_map.get(order_error.order_id)
         old_order = self.orders.get(vnpy_oid, None)
         if old_order:
             old_order.status = Status.REJECTED
@@ -187,7 +206,7 @@ class TD(XtQuantTraderCallback):
 
     def on_order_stock_async_response(self, response: XtOrderResponse):
         self.write_log(f'下单成功 {response.order_id} {response.order_remark} {response.strategy_name}')
-        vn_oid = self.get_vn_orderid(response.seq)
+
         self.orderid_vnoid_map[response.order_id] = str(response.seq)
         self.vnoid_orderid_map[str(response.seq)] = response.order_id
 
