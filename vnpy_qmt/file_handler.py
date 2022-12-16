@@ -21,6 +21,7 @@ class ResultFileHandler(FileSystemEventHandler):
         self._on_order = on_order
         self._order_p = 0
         self._on_trade = on_trade
+        self._trade_p = 0
 
     def on_modified(self, event: FileModifiedEvent):
         path = event.src_path
@@ -32,7 +33,10 @@ class ResultFileHandler(FileSystemEventHandler):
     def on_trade_change(self, path):
         result_table = dbf.Table(path, codepage='cp936')
         with result_table.open(mode=dbf.READ_ONLY) as f:
-            for row in f:
+            for i, row in enumerate(f):
+                if i < self._trade_p:
+                    continue
+                self._trade_p += 1
                 if row['投资备注'].strip() == "":
                     continue
                 caozuo = row['操作'].strip()
@@ -57,7 +61,10 @@ class ResultFileHandler(FileSystemEventHandler):
     def on_order_result(self, path):
         result_table = dbf.Table(path, codepage='cp936')
         with result_table.open(mode=dbf.READ_ONLY) as f:
-            for row in f:
+            for i, row in enumerate(f):
+                if i < self._order_p:
+                    continue
+                self._order_p += 1
                 try:
                     xt_order_id = str(row.ORDERNUM).strip()
                 except ValueError:
@@ -116,5 +123,5 @@ TaskStatus_Status_Map = {
 
 
 if __name__ == '__main__':
-    ResultFileHandler(None).on_order_result(
-        "D:\soft\changcheng_qmt\export_data\XT_DBF_ORDER_result.dbf")
+    rh = ResultFileHandler(print, print)
+    rh.on_order_result("D:\soft\changcheng_qmt\export_data\XT_DBF_ORDER_result.dbf")
