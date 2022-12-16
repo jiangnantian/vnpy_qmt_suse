@@ -4,7 +4,8 @@
 @Time      :2022/11/8 16:49
 @Author    :fsksf
 """
-from typing import Dict
+from collections import defaultdict
+from typing import Dict, List
 from vnpy.event import Event, EventEngine
 from vnpy.trader.event import (
     EVENT_TIMER, EVENT_SNAPSHOT, EVENT_BASKET_COMPONENT,
@@ -19,7 +20,8 @@ from vnpy.trader.object import (
     OrderRequest,
     CancelRequest,
     SubscribeRequest,
-    ContractData
+    ContractData,
+    BasketComponent
 )
 
 from vnpy_qmt.md import MD
@@ -41,6 +43,7 @@ class QmtGateway(BaseGateway):
         self.contracts: Dict[str, ContractData] = {}
         self.md = MD(self)
         self.td = TD(self)
+        self.components: Dict[str, List[BasketComponent]] = defaultdict(list)
         self.count = -1
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
@@ -57,6 +60,37 @@ class QmtGateway(BaseGateway):
 
     def send_order(self, req: OrderRequest) -> str:
         return self.td.send_order(req)
+
+    def send_basket_order(self, req: OrderRequest):
+
+        order_list = []
+        if req.direction == Direction.BUY_BASKET:
+            direction = Direction.LONG
+        else:
+            direction = Direction.SHORT
+        comp_list = self.components.get(req.vt_symbol)
+        if comp_list is None:
+            self.write_log(f'找不到 {req.vt_symbol} 对应的篮子')
+            return (None, None)
+        for comp in comp_list:
+            vol = int(comp.share * req.volume)
+            if vol <= 0:
+                # 份额有等于0的情况
+                continue
+            if comp.exchange != req.exchange:
+                # 篮子只下与ETF同市场的
+                continue
+            rq = OrderRequest(
+                symbol=comp.symbol,
+                direction=direction,
+                type=OrderType.BestOrLimit,
+                volume=vol,
+                offset=req.offset,
+                reference=req.reference,
+                exchange=comp.exchange
+            )
+            order_list.append(self.td.send_order)
+        return order_list
 
     def cancel_order(self, req: CancelRequest) -> None:
         return self.td.cancel_order(req.orderid)
@@ -77,7 +111,8 @@ class QmtGateway(BaseGateway):
         self.contracts[contract.vt_symbol] = contract
         super(QmtGateway, self).on_contract(contract)
 
-    def on_basket_component(self, comp):
+    def on_basket_component(self, comp: BasketComponent):
+        self.components[comp.basket_name].append(comp)
         evt = Event(EVENT_BASKET_COMPONENT, comp)
         self.event_engine.put(evt)
 
