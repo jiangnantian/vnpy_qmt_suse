@@ -260,7 +260,11 @@ class TD(XtQuantTraderCallback):
     def on_stock_trade(self, trade: XtTrade):
         symbol, exchange = to_vn_contract(trade.stock_code)
         vnoid = self.orderid_vnoid_map.get(trade.order_id)
-        order = self.orders.get(trade.order_id)
+        if vnoid is None:
+            return
+        order = self.orders.get(vnoid)
+        if order is None:
+            return
         trd_typ = TO_VN_Trade_Type[trade.order_type]
         trade_ = TradeData(
             gateway_name=self.gateway.gateway_name,
@@ -274,7 +278,7 @@ class TD(XtQuantTraderCallback):
             direction=trd_typ
         )
 
-        if order.direction in (Direction.PURCHASE, Direction.REDEMPTION):
+        if order and order.direction in (Direction.PURCHASE, Direction.REDEMPTION):
             contract = self.gateway.get_contract(trade_.vt_symbol)
             if not contract:
                 if contract.product != Product.ETF:
