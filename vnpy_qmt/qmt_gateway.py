@@ -125,7 +125,6 @@ class QmtGateway(BaseGateway):
         if self.count == -1:
             self.query_trade()
         self.count += 1
-        self.query_trade()
         if self.count < 21:
             return
         self.query_account()
