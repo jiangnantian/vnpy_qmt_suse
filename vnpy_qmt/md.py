@@ -54,8 +54,8 @@ class MD:
         self.write_log('开始获取标的信息')
         contract_ids = set()
         bk = ['上期所', '上证A股', '上证B股', '上证期权', '中金所', '创业板', '大商所',
-              '板块交易指数', '板块加权交易指数', '板块加权指数', '板块指数', '沪市ETF', '沪市债券',
-              '沪市基金', '沪市指数', '沪深A股', '沪深B股', '沪深ETF', '沪深基金', '沪深指数', '深市ETF',
+              '沪市ETF', '沪市指数', '沪深A股',
+              '沪深B股', '沪深ETF', '沪深指数', '深市ETF',
               '深市基金', '深市指数', '深证A股', '深证B股', '深证期权', '科创板', '科创板CDR',
               '连续合约']
         for sector in bk:
@@ -106,7 +106,6 @@ class MD:
         for stock_code, stock_comp in stocks.items():
             xt_ex = stock_comp['componentExchID']
             if xt_ex is None:
-                vn_exchange = None
                 continue
             else:
                 vn_exchange = TO_VN_Exchange_map[xt_ex]
@@ -119,7 +118,8 @@ class MD:
                 cash_substitute=0,
                 premium_ratio=0,
                 redemption_cash_substitute=0,
-                symbol=stock_comp['componentCode']
+                symbol=stock_comp['componentCode'],
+                substitute_flag=1
             )
             self.gateway.on_basket_component(bc)
 
